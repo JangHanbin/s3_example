@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -107,6 +108,42 @@ func uploadFile(client *s3.Client, bucketName string, fileName string) *manager.
 	return result
 
 }
+
+func async(client *s3.Client, bucketName string, path string, extension string) *manager.UploadOutput {
+	fileName := "test.png"
+
+	return uploadFile(client, bucketName, fileName)
+}
+
+type S3PresignGetObjectAPI interface {
+	PresignGetObject(
+		ctx context.Context,
+		params *s3.GetObjectInput,
+		optFns ...func(*s3.PresignOptions)) (*v4.PresignedHTTPRequest, error)
+}
+
+func GetPresignedURL(c context.Context, api S3PresignGetObjectAPI, input *s3.GetObjectInput) (*v4.PresignedHTTPRequest, error) {
+	return api.PresignGetObject(c, input)
+}
+
+func getPublicURL(client *s3.Client, bucketName *string, key *string) (publicURL string) {
+	input := &s3.GetObjectInput{
+		Bucket: bucketName,
+		Key:    key,
+	}
+
+	psClient := s3.NewPresignClient(client)
+
+	resp, err := GetPresignedURL(context.TODO(), psClient, input)
+	if err != nil {
+		fmt.Println("Got an error retrieving pre-signed object:")
+		fmt.Println(err)
+		return
+	}
+
+	return resp.URL
+}
+
 func main() {
 	// Load the Shared AWS Configuration (~/.aws/config)
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("ap-northeast-2"))
@@ -117,14 +154,17 @@ func main() {
 	// Create an Amazon S3 service client
 	client := s3.NewFromConfig(cfg)
 
+	//It's better to use session instead of client.
 	var bucketName = getBuckets(client)
 
 	key := getObjects(client, bucketName)
 
 	println(key)
 
+	println(getPublicURL(client, &bucketName, &key))
+
 	//downloadFile(client, bucketName, "./", key)
 	//createBucket(client, "testbucket4885", "ap-northeast-2")
-	println(uploadFile(client, bucketName, "test2.png"))
+	//println(uploadFile(client, bucketName, "test2.png"))
 
 }
